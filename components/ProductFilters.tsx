@@ -28,6 +28,7 @@ export function ProductFilters({
   onClearFilters
 }: ProductFiltersProps) {
   const [localSearch, setLocalSearch] = useState(searchTerm);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -38,10 +39,19 @@ export function ProductFilters({
   }, [localSearch, onSearchChange]);
 
   const handleCategoryToggle = (categoryName: string, checked: boolean) => {
-    if (checked) {
-      onCategoriesChange([...selectedCategories, categoryName]);
-    } else {
-      onCategoriesChange(selectedCategories.filter(cat => cat !== categoryName));
+    try {
+      setLoading(true);
+      if (checked) {
+        const updatedCategories = [...selectedCategories, categoryName];
+        onCategoriesChange(updatedCategories);
+      } else {
+        const updatedCategories = selectedCategories.filter(cat => cat !== categoryName);
+        onCategoriesChange(updatedCategories);
+      }
+    } catch (error) {
+      console.error('Error toggling category:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -81,16 +91,17 @@ export function ProductFilters({
                   <h4 className="font-medium text-sm">Filter by Categories</h4>
                   <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
                     {categories.map((category) => (
-                      <div key={category.name} className="flex items-center space-x-2">
+                      <div key={category._id} className="flex items-center space-x-2">
                         <Checkbox
-                          id={category.name}
+                          id={category._id}
                           checked={selectedCategories.includes(category.name)}
                           onCheckedChange={(checked) => 
                             handleCategoryToggle(category.name, checked as boolean)
                           }
+                          disabled={loading}
                         />
                         <label
-                          htmlFor={category.name}
+                          htmlFor={category._id}
                           className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                         >
                           {category.name}
@@ -103,7 +114,12 @@ export function ProductFilters({
             </Popover>
 
             {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={onClearFilters}>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={onClearFilters}
+                disabled={loading}
+              >
                 <X className="h-4 w-4 mr-1" />
                 Clear
               </Button>
@@ -115,11 +131,16 @@ export function ProductFilters({
         {selectedCategories.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t">
             {selectedCategories.map((category) => (
-              <Badge key={category} variant="secondary" className="text-xs">
+              <Badge 
+                key={category} 
+                variant="secondary" 
+                className="text-xs"
+              >
                 {category}
                 <button
                   onClick={() => handleCategoryToggle(category, false)}
                   className="ml-1 hover:text-red-500"
+                  disabled={loading}
                 >
                   <X className="h-3 w-3" />
                 </button>

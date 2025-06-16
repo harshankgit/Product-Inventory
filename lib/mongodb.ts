@@ -1,36 +1,75 @@
-import { MongoClient, Db } from 'mongodb';
+import { MongoClient, Db, ServerApiVersion, MongoClientOptions } from 'mongodb';
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Invalid/Missing environment variable: "MONGODB_URI"');
-}
+// MongoDB connection options
+const options: MongoClientOptions = {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
+  retryWrites: true,
+  w: 'majority',
+  maxPoolSize: 100,
+  minPoolSize: 0,
+  maxIdleTimeMS: 30000,
+  waitQueueTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  connectTimeoutMS: 45000,
+};
 
-const uri = process.env.MONGODB_URI;
-const options = {};
+// Default MongoDB URI
+const defaultUri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 
 let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
 
+async function initializeClient() {
+  try {
+    if (!defaultUri) {
+      throw new Error('MongoDB URI is not configured');
+    }
+
+    client = new MongoClient(defaultUri, options);
+    await client.connect();
+    
+    // Test the connection
+    const db = client.db('product_inventory');
+    await db.command({ ping: 1 });
+    
+    console.log('MongoDB connected successfully');
+    return client;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw new Error(`Failed to connect to MongoDB: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable so that the value
-  // is preserved across module reloads caused by HMR (Hot Module Replacement).
   let globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>;
   };
 
   if (!globalWithMongo._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    globalWithMongo._mongoClientPromise = client.connect();
+    globalWithMongo._mongoClientPromise = initializeClient();
   }
   clientPromise = globalWithMongo._mongoClientPromise;
 } else {
-  // In production mode, it's best to not use a global variable.
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+  clientPromise = initializeClient();
 }
 
 export default clientPromise;
 
 export async function getDatabase(): Promise<Db> {
-  const client = await clientPromise;
-  return client.db('product_inventory');
+  try {
+    const client = await clientPromise;
+    const db = client.db('product_inventory');
+    
+    // Test the database connection
+    await db.command({ ping: 1 });
+    
+    return db;
+  } catch (error) {
+    console.error('Failed to get database:', error);
+    throw new Error(`Failed to access database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { productSchema, ProductFormData } from '@/lib/validations/product';
-import { Category } from '@/lib/models/Category';
+import { Category, isCategory } from '@/lib/models/Category';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,6 +22,21 @@ interface ProductFormProps {
 export function ProductForm({ categories, onProductAdded }: ProductFormProps) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validCategories, setValidCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setErrorState] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!categories) {
+      setLoading(true);
+      setErrorState('Loading categories...');
+      return;
+    }
+
+    setLoading(false);
+    setErrorState(null);
+    setValidCategories(categories);
+  }, [categories]);
 
   const {
     register,
@@ -42,6 +57,11 @@ export function ProductForm({ categories, onProductAdded }: ProductFormProps) {
   });
 
   const handleCategoryToggle = (categoryName: string) => {
+    if (!validCategories.some(cat => cat.name === categoryName)) {
+      console.warn(`Category '${categoryName}' not found in valid categories`);
+      return;
+    }
+
     const updatedCategories = selectedCategories.includes(categoryName)
       ? selectedCategories.filter(cat => cat !== categoryName)
       : [...selectedCategories, categoryName];
@@ -72,19 +92,44 @@ export function ProductForm({ categories, onProductAdded }: ProductFormProps) {
       const result = await response.json();
 
       if (!response.ok) {
+        // Handle specific error cases
         if (response.status === 409) {
           setError('name', { message: result.error });
-          toast.error(result.error);
+          toast.error(result.details || result.error);
+        } else if (response.status === 400) {
+          // Validation error
+          if (result.details) {
+            if (result.details.includes('name')) {
+              setError('name', { message: 'Invalid product name' });
+            }
+            if (result.details.includes('description')) {
+              setError('description', { message: 'Invalid description' });
+            }
+            if (result.details.includes('quantity')) {
+              setError('quantity', { message: 'Invalid quantity' });
+            }
+            if (result.details.includes('categories')) {
+              setError('categories', { message: 'Invalid categories' });
+            }
+          }
+          toast.error(result.details || 'Validation failed');
+        } else if (response.status === 500) {
+          toast.error(result.details || 'Server error occurred');
         } else {
-          throw new Error(result.error || 'Failed to create product');
+          toast.error(result.error || 'Failed to create product');
         }
         return;
       }
 
-      toast.success('Product added successfully!');
-      reset();
-      setSelectedCategories([]);
-      onProductAdded();
+      // Handle successful response
+      if (result.success) {
+        toast.success(result.message || 'Product added successfully!');
+        reset();
+        setSelectedCategories([]);
+        onProductAdded();
+      } else {
+        toast.error(result.error || 'Failed to create product');
+      }
     } catch (error) {
       console.error('Error creating product:', error);
       toast.error('Failed to create product. Please try again.');
@@ -147,49 +192,38 @@ export function ProductForm({ categories, onProductAdded }: ProductFormProps) {
             )}
           </div>
 
-          <div className="space-y-3">
-            <Label>Categories * (Select multiple)</Label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {categories.map((category) => (
-                <Button
-                  key={category.name}
-                  type="button"
-                  variant={selectedCategories.includes(category.name) ? "default" : "outline"}
-                  size="sm"
+          <div className="space-y-2">
+            <Label>Categories *</Label>
+            <div className="flex flex-wrap gap-2">
+              {validCategories.map((category) => (
+                <Badge
+                  key={category._id}
+                  variant={selectedCategories.includes(category.name) ? 'secondary' : 'outline'}
                   onClick={() => handleCategoryToggle(category.name)}
-                  className="justify-start"
+                  className="cursor-pointer hover:bg-gray-100"
                 >
-                  {selectedCategories.includes(category.name) ? (
-                    <X className="h-3 w-3 mr-1" />
-                  ) : (
-                    <Plus className="h-3 w-3 mr-1" />
-                  )}
                   {category.name}
-                </Button>
+                </Badge>
               ))}
             </div>
-            
-            {selectedCategories.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {selectedCategories.map((category) => (
-                  <Badge key={category} variant="secondary" className="text-xs">
-                    {category}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            
             {errors.categories && (
               <p className="text-sm text-red-500">{errors.categories.message}</p>
             )}
           </div>
 
-          <Button 
-            type="submit" 
-            disabled={isSubmitting}
+          <Button
+            type="submit"
             className="w-full"
+            disabled={isSubmitting}
           >
-            {isSubmitting ? 'Adding Product...' : 'Add Product'}
+            {isSubmitting ? (
+              <>
+                <span className="mr-2">Creating...</span>
+                <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></div>
+              </>
+            ) : (
+              'Create Product'
+            )}
           </Button>
         </form>
       </CardContent>

@@ -34,26 +34,44 @@ export default function Home() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        setLoading(true);
+        
         // Seed database first
-        await fetch('/api/seed', { method: 'POST' });
+        const seedResponse = await fetch('/api/seed', { method: 'POST' });
+        if (!seedResponse.ok) {
+          const errorData = await seedResponse.json();
+          console.error('Failed to seed database:', errorData);
+          toast.error(errorData.error || 'Failed to initialize database');
+          return;
+        }
         
         // Fetch categories
         const categoriesResponse = await fetch('/api/categories');
         if (categoriesResponse.ok) {
           const categoriesData = await categoriesResponse.json();
           setCategories(categoriesData);
+          // Fetch initial products
+          await fetchProducts();
+        } else {
+          const errorData = await categoriesResponse.json();
+          console.error('Failed to fetch categories:', errorData);
+          toast.error(errorData.error || 'Failed to fetch categories');
         }
-        
-        // Fetch initial products
-        await fetchProducts();
       } catch (error) {
         console.error('Failed to initialize app:', error);
         toast.error('Failed to initialize application');
+      } finally {
+        setLoading(false);
       }
     };
 
     initializeApp();
   }, []);
+
+  // Handle form button click
+  const handleAddProductClick = () => {
+    setShowForm(true);
+  };
 
   const fetchProducts = useCallback(async (page = 1) => {
     setLoading(true);
@@ -108,9 +126,10 @@ export default function Home() {
     fetchProducts(page);
   };
 
+  // Handle product added
   const handleProductAdded = () => {
     setShowForm(false);
-    fetchProducts(1);
+    fetchProducts();
   };
 
   const handleClearFilters = () => {

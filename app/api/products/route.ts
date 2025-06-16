@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
     // Validate request body
     const validatedData = productSchema.parse(body);
     
+    // Get database connection
     const db = await getDatabase();
     const collection = db.collection('products');
 
@@ -96,7 +97,10 @@ export async function POST(request: NextRequest) {
     
     if (existingProduct) {
       return NextResponse.json(
-        { error: 'A product with this name already exists' },
+        { 
+          error: 'A product with this name already exists',
+          details: 'Please choose a different name for this product'
+        },
         { status: 409 }
       );
     }
@@ -108,28 +112,80 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date()
     };
 
+    // Insert product
     const result = await collection.insertOne(product);
     
+    if (!result.acknowledged) {
+      throw new Error('Product insertion failed');
+    }
+
+    // Fetch the created product
     const createdProduct = await collection.findOne({ _id: result.insertedId });
+
+    if (!createdProduct) {
+      throw new Error('Failed to fetch created product');
+    }
 
     return NextResponse.json(
       {
         ...createdProduct,
-        _id: createdProduct!._id.toString()
+        _id: createdProduct._id.toString(),
+        success: true,
+        message: 'Product created successfully'
       },
       { status: 201 }
     );
   } catch (error) {
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error },
-        { status: 400 }
-      );
+    console.error('Product creation error:', error);
+    
+    // Handle specific errors
+    if (error instanceof Error) {
+      if (error.name === 'ZodError') {
+        return NextResponse.json(
+          { 
+            error: 'Validation failed', 
+            details: error.message 
+          },
+          { status: 400 }
+        );
+      }
+      
+      if (error.message.includes('not found')) {
+        return NextResponse.json(
+          { 
+            error: 'Database connection failed',
+            details: 'Please check if MongoDB is running'
+          },
+          { status: 500 }
+        );
+      }
+      
+      if (error.message.includes('duplicate')) {
+        return NextResponse.json(
+          { 
+            error: 'Duplicate product',
+            details: 'A product with this name already exists'
+          },
+          { status: 409 }
+        );
+      }
+      
+      if (error.message.includes('insertion failed')) {
+        return NextResponse.json(
+          { 
+            error: 'Product insertion failed',
+            details: error.message
+          },
+          { status: 500 }
+        );
+      }
     }
     
-    console.error('Failed to create product:', error);
     return NextResponse.json(
-      { error: 'Failed to create product' },
+      { 
+        error: 'Failed to create product',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
